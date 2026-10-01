@@ -25,8 +25,20 @@ helps when something else forwards to rcvd.
 
 To act as the system resolver, rcvd listens on `127.0.0.1:53`. macOS 26 denies that bind to a
 normal user, so the service runs as root with `sudo brew services start rcvd` (LaunchDaemon
-`sh.brew.rcvd`, starts at boot). The config also needs a `[logging] file` inside the Homebrew
-prefix, because the built-in default `/var/log/rcvd/rcvd.log` does not exist on macOS.
+`sh.brew.rcvd`, starts at boot; the service block sets `require_root` on macOS).
+
+The formula writes a ready config (`rcvd_config`) to `etc/rcvd/rcvd.toml` on both OSes:
+- `listen` is `127.0.0.1:53` on macOS and `127.0.0.1:5300` on Linux.
+- Upstream `ip` pinned. Without it rcvd must look up its upstreams through the system resolver,
+  which is rcvd itself, so it never starts resolving.
+- `[logging] file = "stderr"`. brew services writes stderr to `var/log/rcvd/rcvd.log`. rcvd's
+  built-in default `/var/log/rcvd/rcvd.log` is not writable from Homebrew, and rcvd exits.
+
+Homebrew keeps a user-edited etc file and installs the new one as `rcvd.toml.default`. If a
+provider changes an upstream IP, update `rcvd_config`.
+
+`rcvd -stats` needs `sudo` on macOS. There is no `/run/rcvd`, so the socket falls back to
+`os.TempDir()`: `/tmp` for the root daemon and under `sudo`, but `/var/folders/...` in a user shell.
 
 Linux differs: systemd-resolved owns `127.0.0.53:53` and its `DNS=` accepts `IP:port`, so it
 forwards to rcvd on 5300 with no root.

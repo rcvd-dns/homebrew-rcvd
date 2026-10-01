@@ -27,65 +27,30 @@ Or as a single command, which taps and trusts just this formula:
 brew install rcvd-dns/rcvd/rcvd
 ```
 
-## Configure and run  
+## macOS: run rcvd as the system resolver  
 
-rcvd does nothing until it has a config. Copy a bundled example, then start the service:
+On macOS the formula installs a ready-to-use config at `$(brew --prefix)/etc/rcvd/rcvd.toml`. It
+listens on `127.0.0.1:53`, forwards to AdGuard (DoQ), Cloudflare (DoT) and Quad9 (DoH) with their IP
+addresses pinned, validates DNSSEC, and logs to `$(brew --prefix)/var/log/rcvd/rcvd.log`.
 
-```sh
-cp "$(brew --prefix)/opt/rcvd/share/rcvd/mode1-forwarder-3providers.toml" \
-   "$(brew --prefix)/etc/rcvd/rcvd.toml"
-brew services start rcvd
-```
+macOS sends DNS only to port 53, and binding port 53 needs root, so the service runs as a root
+LaunchDaemon (`sh.brew.rcvd`, also starts at boot). The upstream IPs are pinned because once the Mac
+points its DNS at rcvd, rcvd cannot look up its own upstreams by name.
 
-The default listen port is 5300, which needs no root. `brew info rcvd` shows the full caveats,
-including optional UDP buffer tuning for DoQ. See `man rcvd` for every config option.
-
-The bundled examples live in `$(brew --prefix)/opt/rcvd/share/rcvd/`. Homebrew never writes a
-config for you; `$(brew --prefix)/etc/rcvd/` starts empty. The prefix is `/opt/homebrew` on Apple
-Silicon, `/usr/local` on Intel, and `/home/linuxbrew/.linuxbrew` on Linux.
-
-## macOS: use rcvd as the system resolver (port 53)  
-
-macOS sends DNS only to IP addresses on port 53. There is no port setting in System Settings or
-`networksetup`, so for rcvd to handle every app's queries it must listen on `127.0.0.1:53`. Port
-5300 is only useful when something else forwards to rcvd. Binding port 53 needs root on macOS, so
-the service runs as a root LaunchDaemon.
-
-1. Install (see above), then copy an example config:
-
-   ```sh
-   cp "$(brew --prefix)/opt/rcvd/share/rcvd/mode1-forwarder-3providers.toml" \
-      "$(brew --prefix)/etc/rcvd/rcvd.toml"
-   ```
-
-2. Edit `$(brew --prefix)/etc/rcvd/rcvd.toml`. Under `[resolver]`, change the listen address:
-
-   ```toml
-   listen = "127.0.0.1:53"
-   ```
-
-   Under `[logging]`, set a log file inside the Homebrew prefix (the built-in default,
-   `/var/log/rcvd/rcvd.log`, does not exist on macOS). Use your real prefix:
-
-   ```toml
-   file = "/opt/homebrew/var/log/rcvd/rcvd.log"   # Intel: /usr/local/var/log/rcvd/rcvd.log
-   ```
-
-3. Start the service as root. This installs the LaunchDaemon `sh.brew.rcvd`, which also starts at
-   boot:
+1. Start the service:
 
    ```sh
    sudo brew services start rcvd
    ```
 
-4. Check that rcvd answers before pointing the system at it:
+2. Check that rcvd answers before pointing the system at it:
 
    ```sh
    dig @127.0.0.1 example.com
    sudo rcvd -config "$(brew --prefix)/etc/rcvd/rcvd.toml" -stats
    ```
 
-5. Point each active network service at rcvd:
+3. Point each active network service at rcvd:
 
    ```sh
    networksetup -listallnetworkservices
@@ -102,6 +67,23 @@ To undo, restore DHCP-provided DNS first, then stop the service:
 sudo networksetup -setdnsservers "Wi-Fi" empty
 sudo brew services stop rcvd
 ```
+
+Homebrew never overwrites a config you have edited. After an upgrade, the new default appears
+beside it as `rcvd.toml.default`. Other example configs live in
+`$(brew --prefix)/opt/rcvd/share/rcvd/`; see `man rcvd` for every option. The prefix is
+`/opt/homebrew` on Apple Silicon and `/usr/local` on Intel.
+
+## Linux  
+
+The formula installs a ready-to-use config at `$(brew --prefix)/etc/rcvd/rcvd.toml`, with the same
+upstreams as on macOS, listening on `127.0.0.1:5300` (no root needed). Start the service:
+
+```sh
+brew services start rcvd
+dig @127.0.0.1 -p 5300 example.com
+```
+
+`brew info rcvd` shows the full caveats, including optional UDP buffer tuning for DoQ.
 
 Running the service with `sudo` makes Homebrew change some rcvd files to root ownership. If a later
 `brew upgrade` or `brew uninstall` reports permission errors, stop the service with

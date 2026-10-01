@@ -24,8 +24,12 @@ class Rcvd < Formula
     system "go", "build", *std_go_args(ldflags:), "./cmd/rcvd"
 
     man1.install "man/rcvd.1"
-    # Example configs only; nothing is activated until the user provides a config.
     pkgshare.install Dir["etc/*.toml"]
+
+    # A ready-to-run config. Homebrew never overwrites an existing etc file; an
+    # edited copy is kept and the new one lands beside it as rcvd.toml.default.
+    (buildpath/"rcvd.toml").write rcvd_config
+    (etc/"rcvd").install "rcvd.toml"
   end
 
   post_install_steps do
@@ -33,15 +37,70 @@ class Rcvd < Formula
     mkdir_p "log/rcvd", base: :var
   end
 
-  # On the default port 5300 the service runs as the invoking user (launchd
-  # agent on macOS, systemd user unit on Linux). macOS only sends DNS to port
-  # 53, so the system-resolver setup runs it as root via sudo brew services.
+  # macOS only sends DNS to port 53, which needs root, so the service runs as a
+  # LaunchDaemon via sudo brew services. On Linux the default port 5300 runs as
+  # the invoking user (systemd user unit).
   service do
     run [opt_bin/"rcvd", "-config", etc/"rcvd/rcvd.toml"]
     keep_alive true
+    require_root true if OS.mac?
     log_path var/"log/rcvd/rcvd.log"
     error_log_path var/"log/rcvd/rcvd.log"
     working_dir var
+  end
+
+  # macOS listens on port 53 as the system resolver; Linux on the default 5300.
+  # Upstreams pin `ip`, so rcvd never makes a cleartext lookup for them (and on
+  # macOS, once DNS points at 127.0.0.1, it could not look them up at all).
+  # Logging goes to stderr, which brew services writes to var/log/rcvd/rcvd.log;
+  # rcvd's built-in default /var/log/rcvd/rcvd.log is not writable from Homebrew.
+  def rcvd_config
+    listen = OS.mac? ? "127.0.0.1:53" : "127.0.0.1:5300"
+    <<~TOML
+      # rcvd config (installed by Homebrew).
+      # Examples for other setups: #{opt_pkgshare}
+      # All options: man rcvd
+
+      stats_enabled = true
+
+      [resolver]
+      enabled = true
+      listen = "#{listen}"
+
+      [[upstreams]]
+      name = "AdGuard DoQ"
+      host = "dns.adguard.com"
+      ip = "94.140.14.14"
+      port = 853
+      doq = true
+
+      [[upstreams]]
+      name = "Cloudflare DoT"
+      host = "cloudflare-dns.com"
+      ip = "1.1.1.1"
+      port = 853
+      dot = true
+
+      [[upstreams]]
+      name = "Quad9 DoH"
+      host = "dns.quad9.net"
+      ip = "9.9.9.9"
+      port = 443
+      doh = true
+
+      [dnssec]
+      enabled = true
+
+      [cache]
+      enabled = true
+      type = "aggressive"
+      max_size = 4096
+
+      [logging]
+      file = "stderr"
+      level = "info"
+      format = "text"
+    TOML
   end
 
   def caveats
@@ -51,32 +110,35 @@ class Rcvd < Formula
       %w[net.core.rmem_max=7340032 net.core.wmem_max=7340032]
     end
     persist = OS.mac? ? "/etc/sysctl.conf" : "/etc/sysctl.d/60-rcvd-quic.conf"
-    resolver = if OS.mac?
+
+    setup = if OS.mac?
       <<~EOS
-
-        macOS sends DNS only to port 53. To use rcvd as the system resolver, set
-        these in #{etc}/rcvd/rcvd.toml:
-
-          [resolver] listen = "127.0.0.1:53"
-          [logging]  file = "#{var}/log/rcvd/rcvd.log"
-
-        Then run the service as root instead (binding port 53 needs root):
+        #{etc}/rcvd/rcvd.toml is ready to use as the macOS system resolver
+        (127.0.0.1:53). Port 53 needs root, so start the service with sudo:
 
           sudo brew services start rcvd
 
-        Full steps, including networksetup: https://github.com/rcvd-dns/homebrew-rcvd
+        Then point macOS DNS at it (repeat for each network service you use):
+
+          sudo networksetup -setdnsservers "Wi-Fi" 127.0.0.1
+
+        Undo with: sudo networksetup -setdnsservers "Wi-Fi" empty
+        After brew upgrade rcvd, restart it: sudo brew services restart rcvd
+        Full steps: https://github.com/rcvd-dns/homebrew-rcvd
+      EOS
+    else
+      <<~EOS
+        #{etc}/rcvd/rcvd.toml is ready to use and listens on 127.0.0.1:5300.
+        Start the service:
+
+          brew services start rcvd
+
+        Other example configs are in #{opt_pkgshare}.
       EOS
     end
 
     <<~EOS
-      rcvd is not active until it has a config. Copy a bundled example:
-
-        cp #{opt_pkgshare}/mode1-forwarder-3providers.toml #{etc}/rcvd/rcvd.toml
-
-      (Other examples are in #{opt_pkgshare}.) Then start the service:
-
-        brew services start rcvd
-      #{resolver}
+      #{setup}
       rcvd speaks QUIC (DoQ) by default. If quic-go warns "failed to sufficiently
       increase receive buffer size", raise the kernel UDP buffer limits. rcvd still
       works without this, with slightly lower throughput.
