@@ -1,13 +1,7 @@
 # Homebrew formula for rcvd, a privacy-first DNS engine (DoQ/DoT/DoH, no cleartext).
 #
-# One formula for both macOS and Linux (Linuxbrew): a tap holds a single
-# Formula/rcvd.rb, so per-OS differences live in OS.mac? branches below. The
-# published copy lives in the rcvd-dns/homebrew-rcvd tap; this file is its source.
-#
-# Homebrew only installs formulae from a tap, so test through the tap:
-#
-#     brew install --build-from-source rcvd-dns/rcvd/rcvd
-#     brew test rcvd && brew audit --strict --new rcvd-dns/rcvd/rcvd
+# One formula for both macOS and Linux (Linuxbrew); per-OS differences live in
+# OS.mac? branches below. Maintenance notes: MAINTAINING.md.
 class Rcvd < Formula
   desc "Privacy-first DNS engine with encrypted DoQ/DoT/DoH egress and no cleartext"
   homepage "https://rcvd.net"
@@ -39,8 +33,9 @@ class Rcvd < Formula
     mkdir_p "log/rcvd", base: :var
   end
 
-  # Port 5300 needs no privilege, so the service runs as the invoking user
-  # (launchd agent on macOS, systemd user unit on Linux).
+  # On the default port 5300 the service runs as the invoking user (launchd
+  # agent on macOS, systemd user unit on Linux). macOS only sends DNS to port
+  # 53, so the system-resolver setup runs it as root via sudo brew services.
   service do
     run [opt_bin/"rcvd", "-config", etc/"rcvd/rcvd.toml"]
     keep_alive true
@@ -56,6 +51,22 @@ class Rcvd < Formula
       %w[net.core.rmem_max=7340032 net.core.wmem_max=7340032]
     end
     persist = OS.mac? ? "/etc/sysctl.conf" : "/etc/sysctl.d/60-rcvd-quic.conf"
+    resolver = if OS.mac?
+      <<~EOS
+
+        macOS sends DNS only to port 53. To use rcvd as the system resolver, set
+        these in #{etc}/rcvd/rcvd.toml:
+
+          [resolver] listen = "127.0.0.1:53"
+          [logging]  file = "#{var}/log/rcvd/rcvd.log"
+
+        Then run the service as root instead (binding port 53 needs root):
+
+          sudo brew services start rcvd
+
+        Full steps, including networksetup: https://github.com/rcvd-dns/homebrew-rcvd
+      EOS
+    end
 
     <<~EOS
       rcvd is not active until it has a config. Copy a bundled example:
@@ -65,7 +76,7 @@ class Rcvd < Formula
       (Other examples are in #{opt_pkgshare}.) Then start the service:
 
         brew services start rcvd
-
+      #{resolver}
       rcvd speaks QUIC (DoQ) by default. If quic-go warns "failed to sufficiently
       increase receive buffer size", raise the kernel UDP buffer limits. rcvd still
       works without this, with slightly lower throughput.
