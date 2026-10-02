@@ -5,8 +5,8 @@
 class Rcvd < Formula
   desc "Privacy-first DNS engine with encrypted DoQ/DoT/DoH egress and no cleartext"
   homepage "https://rcvd.net"
-  url "https://github.com/rcvd-dns/rcvd/archive/refs/tags/v0.3.0.tar.gz"
-  sha256 "2252b6d071f7a7a2a2ae804add48263bc19bf87784b16bec97ef6f9afb422f47"
+  url "https://github.com/rcvd-dns/rcvd/archive/refs/tags/v0.3.1.tar.gz"
+  sha256 "e633c926c97d9642cf6dcdd9582a2edaaaec5d2e822d3cbe5c91b95c6f14cd18"
   license "MIT"
   head "https://github.com/rcvd-dns/rcvd.git", branch: "main"
 
