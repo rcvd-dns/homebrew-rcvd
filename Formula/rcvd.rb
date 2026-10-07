@@ -1,30 +1,57 @@
-# Homebrew formula for rcvd, a privacy-first DNS engine (DoQ/DoT/DoH, no cleartext).
+# Homebrew formula for rcvd
+# privacy-first DNS engine. DoQ/DoT/DoH, ACME Certmagic, blocklists and allowlists)
 #
 # One formula for both macOS and Linux (Linuxbrew); per-OS differences live in
 # OS.mac? branches below. Maintenance notes: MAINTAINING.md.
+#
+# This formula installs the prebuilt release binary for each OS/arch (built once
+# by the rcvd release CI, checksummed in the release SHA256SUMS). No Go toolchain
+# and no compile on the user's machine: the download is from the official release CI. 
+# The man page and rcvd config toml are pulled from the matching source tag as a
+# resource (data only, nothing is built from it).
 class Rcvd < Formula
   desc "Privacy-first DNS engine with encrypted DoQ/DoT/DoH egress and no cleartext"
   homepage "https://rcvd.net"
-  url "https://github.com/rcvd-dns/rcvd/archive/refs/tags/v0.3.1.tar.gz"
-  sha256 "e633c926c97d9642cf6dcdd9582a2edaaaec5d2e822d3cbe5c91b95c6f14cd18"
+  version "0.3.1"
   license "MIT"
-  head "https://github.com/rcvd-dns/rcvd.git", branch: "main"
 
-  depends_on "go" => :build
+  on_macos do
+    on_arm do
+      url "https://github.com/rcvd-dns/rcvd/releases/download/v0.3.1/rcvd-macos-arm64"
+      sha256 "0bbe4a381e83c9d41a7f4c2ff93010e85d9cb4c633ea3238bb2aee7fe1c44c33"
+    end
+    on_intel do
+      url "https://github.com/rcvd-dns/rcvd/releases/download/v0.3.1/rcvd-macos-amd64"
+      sha256 "f0a05401236604ea89adf907a72061fe95417ba2fa46c290b378fb4e38ee0b88"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/rcvd-dns/rcvd/releases/download/v0.3.1/rcvd-linux-arm64"
+      sha256 "1d1dfbc2e4cec83e9a2a14cf30cab2fc11d21294b3086d960590141625da66f7"
+    end
+    on_intel do
+      url "https://github.com/rcvd-dns/rcvd/releases/download/v0.3.1/rcvd-linux-amd64"
+      sha256 "4906f1c1ad32e86aa1ee4724ca48650c1e8342e9d5ed796f22a74d11ef22ce02"
+    end
+  end
+
+  # Man page + example configs from the matching source tag. Not compiled; only
+  # the man/ and etc/ data files are installed from it.
+  resource "extras" do
+    url "https://github.com/rcvd-dns/rcvd/archive/refs/tags/v0.3.1.tar.gz"
+    sha256 "e633c926c97d9642cf6dcdd9582a2edaaaec5d2e822d3cbe5c91b95c6f14cd18"
+  end
 
   def install
-    # Static and build-stamped; std_go_args adds -s -w and -trimpath. time is
-    # the formula's source date, so the stamp is reproducible.
-    ldflags = %W[
-      -X main.version=#{version}
-      -X main.buildDate=#{time.iso8601}
-      -X main.buildSource=homebrew
-    ]
-    ENV["CGO_ENABLED"] = "0"
-    system "go", "build", *std_go_args(ldflags:), "./cmd/rcvd"
+    # The downloaded file is the prebuilt binary itself; install it as `rcvd`.
+    bin.install stable.url.split("/").last => "rcvd"
 
-    man1.install "man/rcvd.1"
-    pkgshare.install Dir["etc/*.toml"]
+    resource("extras").stage do
+      man1.install "man/rcvd.1"
+      pkgshare.install Dir["etc/*.toml"]
+    end
 
     # A ready-to-run config. Homebrew never overwrites an existing etc file; an
     # edited copy is kept and the new one lands beside it as rcvd.toml.default.
@@ -109,7 +136,7 @@ class Rcvd < Formula
     else
       %w[net.core.rmem_max=7340032 net.core.wmem_max=7340032]
     end
-    persist = OS.mac? ? "/etc/sysctl.conf" : "/etc/sysctl.d/60-rcvd-quic.conf"
+    persist = OS.mac? ? "/etc/sysctl.conf" : "/etc/sysctl.d/30-rcvd.conf"
 
     setup = if OS.mac?
       <<~EOS
