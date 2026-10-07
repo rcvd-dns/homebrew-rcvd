@@ -1,7 +1,8 @@
 # rcvd Homebrew Tap  
 
-Homebrew formula for rcvd, a privacy-first DNS engine with encrypted DoQ/DoT/DoH egress and no
-cleartext fallback. Works on macOS (Apple Silicon and Intel) and Linux (Linuxbrew).
+Homebrew formula for rcvd, privacy-first DNS engine with encrypted egress only, DoQ/DoT/DoH.  
+
+Works on macOS (Apple Silicon and Intel) and Linux (Linuxbrew).
 
 - Project: https://github.com/rcvd-dns/rcvd
 - Website: https://rcvd.net
@@ -9,33 +10,28 @@ cleartext fallback. Works on macOS (Apple Silicon and Intel) and Linux (Linuxbre
 
 ## Install  
 
-Tap, trust, then install:
-
-```sh
-brew tap rcvd-dns/rcvd
-brew trust --formula rcvd-dns/rcvd/rcvd
-brew install rcvd
-```
-
-Homebrew 6.0 and later requires third-party taps to be trusted before install. The command above
-trusts only the rcvd formula, not the whole tap. See https://docs.brew.sh/Tap-Trust for the trust
-model.
-
-Or as a single command, which taps and trusts just this formula:
-
 ```sh
 brew install rcvd-dns/rcvd/rcvd
 ```
 
+Installs the prebuilt release binary.  
+The fully qualified name trusts only this formula, which Homebrew 6.0+ requires for third-party taps.  
+See https://docs.brew.sh/Tap-Trust
+
 ## macOS: run rcvd as the system resolver  
+
+On macOS, run rcvd on port 53. This is the only configuration we recommend on macOS, and the only
+one that works as the system resolver. macOS sends DNS only to port 53 (mDNSResponder has no port
+setting), so any other port will not be used as intended. This is a macOS limitation, not an rcvd
+one.
 
 On macOS the formula installs a ready-to-use config at `$(brew --prefix)/etc/rcvd/rcvd.toml`. It
 listens on `127.0.0.1:53`, forwards to AdGuard (DoQ), Cloudflare (DoT) and Quad9 (DoH) with their IP
 addresses pinned, validates DNSSEC, and logs to `$(brew --prefix)/var/log/rcvd/rcvd.log`.
 
-macOS sends DNS only to port 53, and binding port 53 needs root, so the service runs as a root
-LaunchDaemon (`sh.brew.rcvd`, also starts at boot). The upstream IPs are pinned because once the Mac
-points its DNS at rcvd, rcvd cannot look up its own upstreams by name.
+Binding port 53 needs root, so the service runs as a root LaunchDaemon (`sh.brew.rcvd`, also starts
+at boot). The upstream IPs are pinned because once the Mac points its DNS at rcvd, rcvd cannot look
+up its own upstreams by name.
 
 1. Start the service:
 
