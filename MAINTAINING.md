@@ -13,9 +13,14 @@ the PR on macOS and Linux; review and merge it. No hand-editing of the hash is n
 To test a formula change locally, install through the tap (Homebrew refuses a file path):
 
 ```sh
-brew install --build-from-source rcvd-dns/rcvd/rcvd
+brew reinstall rcvd-dns/rcvd/rcvd
 brew test rcvd && brew audit --strict --new rcvd-dns/rcvd/rcvd
 ```
+
+`brew update` only updates a tap that is a git clone. `brew tap rcvd-dns/rcvd` makes one; a
+copied tap directory has no `.git`, is silently skipped, and stays on its old version. Check with
+`git -C "$(brew --repo rcvd-dns/rcvd)" remote -v`. To test an unmerged change, check out its
+branch in that clone.
 
 ## macOS: port 53 for the system resolver  
 
@@ -45,15 +50,15 @@ forwards to rcvd on 5300 with no root.
 
 ## Homebrew behavior that affects rcvd  
 
-- **Tap trust (Homebrew 6.0+).** Third-party taps must be trusted before their code runs. The
-  install docs use `brew trust --formula rcvd-dns/rcvd/rcvd`, which trusts only this formula.
-  Untrusted taps are no longer auto-tapped. A Brewfile would need `trusted:` on the tap entry.
+- **Tap trust.** Third-party taps must be trusted before their code runs. On Homebrew 7.0+,
+  `brew install rcvd-dns/rcvd/rcvd` auto-taps (git clone) and trusts only this formula; a bare
+  `brew install rcvd` does not find it. A Brewfile would need `trusted:` on the tap entry.
   https://brew.sh/2026/06/11/homebrew-6.0.0/ and https://docs.brew.sh/Tap-Trust
 - **Formulae must live in a tap (Homebrew 7).** Test through the tap, not a file path.
 - **`post_install` is deprecated** in favor of `post_install_steps`.
-- **Linux build sandbox (Bubblewrap, 6.0+).** Applies to build, test, and post-install on Linux,
-  so the formula must not assume network or file access outside the sandbox.
-- **`std_go_args`** already adds `-s -w` and `-trimpath`; do not repeat them in `ldflags`.
+- **Linux sandbox (Bubblewrap, 6.0+).** Applies to test and post-install on Linux, so the formula
+  must not assume network or file access outside the sandbox. The `test do` config check only
+  asserts rcvd printed no `config error`; it does not expect DNS answers.
 - **homebrew-core** needs 90 forks, 90 watchers, or 225 stars for a self-submission
   (https://docs.brew.sh/Package-Acceptance-Policy). Revisit once rcvd meets that.
 
@@ -67,9 +72,12 @@ forwards to rcvd on 5300 with no root.
 
 ## Tested  
 
-- v0.3.0 on Linuxbrew (Homebrew 7.0) and macOS 26.6 Intel: build, test, and `audit --strict` clean.
-- macOS 26.6 Intel: `sudo brew services` on `127.0.0.1:53` as the system resolver.
+- v0.3.0 (source build) on Linuxbrew (Homebrew 7.0) and macOS 26.6 Intel: build, test, and
+  `audit --strict` clean.
+- v0.3.1 (prebuilt binary) on macOS 26.6 Intel: `sudo brew services` on `127.0.0.1:53` as the
+  system resolver; `dig`, `-stats`, and `lsof` checks from the README pass.
 
 ## Open  
 
 - [ ] Test on Apple Silicon (`/opt/homebrew` prefix). Only Intel is tested so far.
+- [ ] Test v0.3.1 (prebuilt binary) on Linuxbrew.

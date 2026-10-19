@@ -1,18 +1,18 @@
 # Homebrew formula for rcvd
-# privacy-first DNS engine. DoQ/DoT/DoH, ACME Certmagic, blocklists and allowlists)
+# encryption-only DNS engine. DoQ/DoT/DoH, ACME Certmagic, blocklists, allowlists)
 #
 # One formula for both macOS and Linux (Linuxbrew); per-OS differences live in
 # OS.mac? branches below. Maintenance notes: MAINTAINING.md.
 #
-# This formula installs the prebuilt release binary for each OS/arch (built once
-# by the rcvd release CI, checksummed in the release SHA256SUMS). No Go toolchain
-# and no compile on the user's machine: the download is from the official release CI. 
+# This formula installs the prebuilt release binary for each OS/arch
+# (built once by the rcvd release CI, checksummed in the release SHA256SUMS).
+# No Go toolchain required. And no compilation on the user's machine:
+# The binanry download is from the official release CI.
 # The man page and rcvd config toml are pulled from the matching source tag as a
 # resource (data only, nothing is built from it).
 class Rcvd < Formula
   desc "Privacy-first DNS engine with encrypted DoQ/DoT/DoH egress and no cleartext"
   homepage "https://rcvd.net"
-  version "0.3.1"
   license "MIT"
 
   on_macos do
@@ -160,15 +160,21 @@ class Rcvd < Formula
 
           brew services start rcvd
 
+        This is a systemd user service, which stops when you log out. To keep
+        rcvd running after logout and start it at boot:
+
+          sudo loginctl enable-linger $USER
+
         Other example configs are in #{opt_pkgshare}.
       EOS
     end
 
     <<~EOS
       #{setup}
-      rcvd speaks QUIC (DoQ) by default. If quic-go warns "failed to sufficiently
-      increase receive buffer size", raise the kernel UDP buffer limits. rcvd still
-      works without this, with slightly lower throughput.
+      rcvd uses QUIC for DoQ upstreams, like the first one in this config. If
+      quic-go warns "failed to sufficiently increase receive buffer size", raise
+      the kernel UDP buffer limits. rcvd still works without this, with slightly
+      lower throughput.
 
       #{sysctl.map { |kv| "  sudo sysctl -w #{kv}" }.join("\n")}
 
@@ -179,5 +185,14 @@ class Rcvd < Formula
   test do
     assert_match "v#{version}", shell_output("#{bin}/rcvd -version")
     assert_path_exists pkgshare/"mode1-forwarder-3providers.toml"
+
+    [etc/"rcvd/rcvd.toml", pkgshare/"mode1-forwarder-3providers.toml"].each do |config|
+      log = testpath/"#{config.basename}.log"
+      pid = spawn bin/"rcvd", "-config", config, [:out, :err] => log.to_s
+      sleep 3
+      Process.kill("TERM", pid)
+      Process.wait(pid)
+      refute_match "config error", log.read
+    end
   end
 end
